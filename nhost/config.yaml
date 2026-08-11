@@ -1,0 +1,4 @@
+version: 3
+endpoint: https://local.hasura.local.nhost.run
+admin_secret: nhost-admin-secret
+metadata_directory: metadata

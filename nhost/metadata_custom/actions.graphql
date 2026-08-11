@@ -1,0 +1,29 @@
+type Mutation {
+  """
+  Starts a run of a workflow. Verifies the caller is owner/editor in the
+  workflow's org, checks the org's quota, creates the workflow_run, and
+  executes steps in order (synchronously, for demo simplicity - a queue
+  would be used for a production version). Pauses on approval_gate steps.
+  """
+  triggerWorkflowRun(workflow_id: uuid!): TriggerWorkflowRunOutput
+
+  """
+  Resumes a paused approval_gate step. Checks the caller's role in the
+  workflow's org in code (this is a runtime decision, not a static row
+  permission) before allowing the run to continue.
+  """
+  approveStep(step_run_id: uuid!, approve: Boolean!): ApproveStepOutput
+}
+
+type TriggerWorkflowRunOutput {
+  workflow_run_id: uuid!
+  status: String!
+  message: String
+}
+
+type ApproveStepOutput {
+  workflow_run_id: uuid!
+  step_run_id: uuid!
+  status: String!
+  message: String
+}

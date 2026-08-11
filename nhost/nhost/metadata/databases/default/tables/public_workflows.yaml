@@ -1,0 +1,3 @@
+table:
+  name: workflows
+  schema: public

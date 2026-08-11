@@ -1,0 +1,419 @@
+# =========================================================================
+# Hasura metadata for AI Agent Workflow Builder
+#
+# Design: a single authenticated Hasura role "user" is used for everyone.
+# Org + org-role scoping (Layer 1) is enforced entirely through permission
+# filters that traverse relationships down to org_members, so it can never
+# be bypassed by an editor/viewer guessing another org's UUID.
+#
+# Step-level gating for sensitive step types (db_write / webhook trigger /
+# notify) (Layer 2a) is enforced as an extra _and clause on the INSERT
+# check for workflow_steps / workflow_triggers.
+#
+# The approval_gate resume decision (Layer 2b) is intentionally NOT
+# expressible as a Hasura permission (it's a runtime decision, not a row
+# check), so approved_by/approved_at are only ever written by the
+# `approveStep` Action, which runs with the admin secret and does its own
+# role check in code. Regular users have no update permission on those
+# columns at all.
+# =========================================================================
+
+- table:
+    schema: public
+    name: organizations
+  object_relationships: []
+  array_relationships:
+    - name: org_members
+      using:
+        foreign_key_constraint_on:
+          column: org_id
+          table:
+            schema: public
+            name: org_members
+    - name: workflows
+      using:
+        foreign_key_constraint_on:
+          column: org_id
+          table:
+            schema: public
+            name: workflows
+  select_permissions:
+    - role: user
+      permission:
+        columns: [id, name, quota_calls_allowed, quota_calls_used, quota_period_start, created_at]
+        filter:
+          org_members:
+            user_id:
+              _eq: X-Hasura-User-Id
+
+- table:
+    schema: public
+    name: org_members
+  object_relationships:
+    - name: org
+      using:
+        foreign_key_constraint_on: org_id
+  select_permissions:
+    - role: user
+      permission:
+        columns: [id, org_id, user_id, role, created_at]
+        filter:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+  insert_permissions:
+    # only an owner in the same org can add members
+    - role: user
+      permission:
+        check:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+              role:
+                _eq: owner
+        columns: [org_id, user_id, role]
+  update_permissions:
+    - role: user
+      permission:
+        columns: [role]
+        filter:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+              role:
+                _eq: owner
+        check: null
+  delete_permissions:
+    - role: user
+      permission:
+        filter:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+              role:
+                _eq: owner
+
+- table:
+    schema: public
+    name: workflows
+  object_relationships:
+    - name: org
+      using:
+        foreign_key_constraint_on: org_id
+  array_relationships:
+    - name: workflow_steps
+      using:
+        foreign_key_constraint_on:
+          column: workflow_id
+          table:
+            schema: public
+            name: workflow_steps
+    - name: workflow_triggers
+      using:
+        foreign_key_constraint_on:
+          column: workflow_id
+          table:
+            schema: public
+            name: workflow_triggers
+    - name: workflow_runs
+      using:
+        foreign_key_constraint_on:
+          column: workflow_id
+          table:
+            schema: public
+            name: workflow_runs
+  select_permissions:
+    - role: user
+      # Layer 1: any member (owner/editor/viewer) of the org can see it,
+      # but never a member of a different org, even for the same row id.
+      permission:
+        columns: [id, org_id, name, description, created_by, created_at, updated_at]
+        filter:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+  insert_permissions:
+    - role: user
+      # Layer 1: only owner/editor can create workflows, scoped to their own org.
+      permission:
+        check:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+              role:
+                _in: [owner, editor]
+        columns: [org_id, name, description, created_by]
+  update_permissions:
+    - role: user
+      permission:
+        columns: [name, description]
+        filter:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+              role:
+                _in: [owner, editor]
+        check: null
+  delete_permissions:
+    - role: user
+      permission:
+        filter:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+              role:
+                _eq: owner
+
+- table:
+    schema: public
+    name: workflow_steps
+  object_relationships:
+    - name: workflow
+      using:
+        foreign_key_constraint_on: workflow_id
+  select_permissions:
+    - role: user
+      permission:
+        columns: [id, workflow_id, position, type, name, config, created_at]
+        filter:
+          workflow:
+            org:
+              org_members:
+                user_id:
+                  _eq: X-Hasura-User-Id
+  insert_permissions:
+    - role: user
+      # Layer 1 (org+role) AND Layer 2 (step-type gating) combined.
+      # An editor may insert most step types, but db_write and notify
+      # are reserved for owners. approval_gate/http_request/llm_call/
+      # conditional_branch are editable by owner or editor.
+      permission:
+        check:
+          _and:
+            - workflow:
+                org:
+                  org_members:
+                    user_id:
+                      _eq: X-Hasura-User-Id
+                    role:
+                      _in: [owner, editor]
+            - _or:
+                - type:
+                    _nin: [db_write, notify]
+                - workflow:
+                    org:
+                      org_members:
+                        user_id:
+                          _eq: X-Hasura-User-Id
+                        role:
+                          _eq: owner
+        columns: [workflow_id, position, type, name, config]
+  update_permissions:
+    - role: user
+      permission:
+        columns: [position, name, config]
+        filter:
+          _and:
+            - workflow:
+                org:
+                  org_members:
+                    user_id:
+                      _eq: X-Hasura-User-Id
+                    role:
+                      _in: [owner, editor]
+            - _or:
+                - type:
+                    _nin: [db_write, notify]
+                - workflow:
+                    org:
+                      org_members:
+                        user_id:
+                          _eq: X-Hasura-User-Id
+                        role:
+                          _eq: owner
+        check: null
+  delete_permissions:
+    - role: user
+      permission:
+        filter:
+          workflow:
+            org:
+              org_members:
+                user_id:
+                  _eq: X-Hasura-User-Id
+                role:
+                  _eq: owner
+
+- table:
+    schema: public
+    name: workflow_triggers
+  object_relationships:
+    - name: workflow
+      using:
+        foreign_key_constraint_on: workflow_id
+  select_permissions:
+    - role: user
+      permission:
+        # webhook_secret intentionally excluded - only visible via admin/functions
+        columns: [id, workflow_id, type, cron_schedule, watch_table, config, is_active, created_at]
+        filter:
+          workflow:
+            org:
+              org_members:
+                user_id:
+                  _eq: X-Hasura-User-Id
+  insert_permissions:
+    - role: user
+      # Layer 2: only an owner may attach a webhook trigger (it opens an
+      # inbound endpoint outside the sandbox). Owner/editor may attach
+      # manual/scheduled/database_event triggers.
+      permission:
+        check:
+          _and:
+            - workflow:
+                org:
+                  org_members:
+                    user_id:
+                      _eq: X-Hasura-User-Id
+                    role:
+                      _in: [owner, editor]
+            - _or:
+                - type:
+                    _neq: webhook
+                - workflow:
+                    org:
+                      org_members:
+                        user_id:
+                          _eq: X-Hasura-User-Id
+                        role:
+                          _eq: owner
+        columns: [workflow_id, type, cron_schedule, watch_table, config, is_active]
+  update_permissions:
+    - role: user
+      permission:
+        columns: [is_active, cron_schedule, config]
+        filter:
+          workflow:
+            org:
+              org_members:
+                user_id:
+                  _eq: X-Hasura-User-Id
+                role:
+                  _in: [owner, editor]
+        check: null
+
+- table:
+    schema: public
+    name: workflow_runs
+  object_relationships:
+    - name: workflow
+      using:
+        foreign_key_constraint_on: workflow_id
+    - name: org
+      using:
+        foreign_key_constraint_on: org_id
+  array_relationships:
+    - name: step_runs
+      using:
+        foreign_key_constraint_on:
+          column: workflow_run_id
+          table:
+            schema: public
+            name: step_runs
+  select_permissions:
+    - role: user
+      permission:
+        columns: [id, workflow_id, org_id, status, triggered_by, trigger_type, started_at, finished_at, current_step_position, context]
+        filter:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      # NOTE: inserts/updates to workflow_runs are only ever done by the
+      # triggerWorkflowRun / approveStep Actions using the admin secret -
+      # there is deliberately no insert/update permission for role "user"
+      # here, since "start a run" must go through the Action (which checks
+      # quota + role) rather than a raw mutation.
+
+- table:
+    schema: public
+    name: step_runs
+  object_relationships:
+    - name: workflow_run
+      using:
+        foreign_key_constraint_on: workflow_run_id
+    - name: workflow_step
+      using:
+        foreign_key_constraint_on: workflow_step_id
+    - name: org
+      using:
+        foreign_key_constraint_on: org_id
+  select_permissions:
+    - role: user
+      permission:
+        columns: [id, workflow_run_id, workflow_step_id, org_id, status, input, output, error, attempt_count, approved_by, approved_at, started_at, finished_at]
+        filter:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      # No insert/update/delete permissions for role "user": all writes to
+      # step_runs (including approved_by/approved_at) happen exclusively
+      # inside the Action handlers via the admin role, after those
+      # handlers perform their own role checks in code (Layer 2b).
+
+# ---------------------------------------------------------------------
+# external_events: a stand-in "watched table". A row inserted here by an
+# external system (or by hand, for the demo) represents a database write
+# that should be able to auto-start any workflow whose trigger type is
+# `database_event` and whose watch_table matches `table_name`.
+# ---------------------------------------------------------------------
+- table:
+    schema: public
+    name: external_events
+  select_permissions:
+    - role: user
+      permission:
+        columns: [id, org_id, table_name, payload, created_at]
+        filter:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+  insert_permissions:
+    - role: user
+      permission:
+        check:
+          org:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+              role:
+                _in: [owner, editor]
+        columns: [org_id, table_name, payload]
+  object_relationships:
+    - name: org
+      using:
+        foreign_key_constraint_on: org_id
+  event_triggers:
+    - name: on_external_event_insert
+      definition:
+        enable_manual: false
+        insert:
+          columns: "*"
+      retry_conf:
+        num_retries: 3
+        interval_sec: 10
+        timeout_sec: 60
+      webhook: https://local.functions.local.nhost.run/v1/eventTrigger
+      headers:
+        - name: x-webhook-secret
+          value: my-random-secret-12

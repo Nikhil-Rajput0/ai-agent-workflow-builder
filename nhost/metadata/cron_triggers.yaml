@@ -1,0 +1,13 @@
+# Fires every minute; the scheduledRunner function checks all active
+# `scheduled` workflow_triggers and starts a run for any whose cron_schedule
+# is due (using node-cron's parser to test the schedule, not to actually
+# schedule it - Hasura's own cron trigger is the single source of scheduling).
+- name: scan_scheduled_workflow_triggers
+  webhook: "{{NHOST_FUNCTIONS_URL}}/scheduledRunner"
+  schedule: "* * * * *"
+  include_in_metadata: true
+  payload: {}
+  retry_conf:
+    num_retries: 1
+    timeout_seconds: 60
+    tolerance_seconds: 21600

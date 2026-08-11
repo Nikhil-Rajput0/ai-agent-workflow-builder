@@ -1,0 +1,40 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #0b0d12;
+  color: #e6e8ec;
+}
+a { color: inherit; }
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+.card {
+  background: #14171f;
+  border: 1px solid #262b36;
+  border-radius: 10px;
+  padding: 16px;
+}
+.btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #2f3646;
+  background: #1c2130;
+  color: #e6e8ec;
+}
+.btn-primary { background: #4f7cff; border-color: #4f7cff; color: white; }
+.btn-danger { background: #ff4f4f; border-color: #ff4f4f; color: white; }
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-pending { background: #33384a; color: #b8c1e0; }
+.badge-running { background: #1a3a6b; color: #7db2ff; }
+.badge-paused { background: #6b5a1a; color: #ffd27d; }
+.badge-succeeded { background: #1a5f3a; color: #7dffb0; }
+.badge-failed { background: #6b1a1a; color: #ff7d7d; }
+.badge-skipped { background: #333; color: #999; }
