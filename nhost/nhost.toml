@@ -1,8 +1,8 @@
 [global]
 [hasura]
 version = 'v2.36.0'
-adminSecret = '{{ HASURA_GRAPHQL_ADMIN_SECRET }}'
-webhookSecret = '{{ NHOST_WEBHOOK_SECRET }}'
+adminSecret = '{{ secrets.HASURA_GRAPHQL_ADMIN_SECRET }}'
+webhookSecret = '{{ secrets.NHOST_WEBHOOK_SECRET }}'
 
 [hasura.settings]
 enableRemoteSchemaPermissions = false
