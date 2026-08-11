@@ -1,0 +1,4 @@
+version: 3
+endpoint: https://sgirepkhkffgoocasydt.hasura.ap-south-1.nhost.run
+admin_secret: 11d87a5f021e583fc96a2b6f9f5ed478952e4117067b4d2af13e098373f4c2b0
+metadata_directory: metadata
