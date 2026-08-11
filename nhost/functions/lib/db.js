@@ -4,7 +4,7 @@
 // before writing anything (see auth.js).
 
 const HASURA_URL = process.env.NHOST_GRAPHQL_URL || process.env.HASURA_GRAPHQL_URL;
-const ADMIN_SECRET = process.env.HASURA_GRAPHQL_ADMIN_SECRET;
+const ADMIN_SECRET = process.env.CUSTOM_GRAPHQL_ADMIN_SECRET || process.env.HASURA_GRAPHQL_ADMIN_SECRET;
 
 async function gqlAdmin(query, variables = {}) {
   const res = await fetch(HASURA_URL, {
